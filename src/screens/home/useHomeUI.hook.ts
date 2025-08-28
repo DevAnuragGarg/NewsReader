@@ -12,46 +12,54 @@ export const useHomeUI = (props: HomeScreenProps) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [articles, setArticles] = useState<News[]>([]);
+  const [hasNoMore, setHasNoMore] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   const { storeData, getData, clearData } = useStorage();
   const { error: apiError, fetchNews } = useNewsAPI();
 
-  const fetchArticles = useCallback(
-    async (forceRefresh: boolean) => {
-      console.log('Fetching articles...');
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchArticles = useCallback(async () => {
+    console.log('Fetching articles...');
+    try {
+      setLoading(true);
+      setError(null);
 
-        // first check the cache with the key
-        if (!forceRefresh) {
-          const cachedArticles = await getData(pageNumber, pageSize);
+      // first check the cache with the key
+      if (!isRefreshing) {
+        const cachedArticles = await getData(pageNumber, pageSize);
 
-          if (cachedArticles) {
-            console.log(`📦 Cache hit: page ${pageNumber}`);
-            setArticles(cachedArticles);
-            setError(null);
-            return;
-          }
-        } else {
-          // as it is force refresh clear the cache
-          console.log(`📦 Cache miss: Clearing old data`);
-          await clearData();
-          setArticles([]);
+        if (cachedArticles) {
+          console.log(`📦 Cache hit: page ${pageNumber}`);
+          setArticles(cachedArticles);
+          setError(null);
+          return;
         }
+      } else {
+        // as it is force refresh clear the cache
+        console.log(`📦 Cache miss: Clearing old data`);
+        await clearData();
+        setArticles([]);
+      }
 
-        // fetch news from API
-        console.log(
-          `🌐 Fetching from API: page ${pageNumber}, size ${pageSize}`,
-        );
-        const news = await fetchNews(pageNumber, pageSize);
+      // fetch news from API
+      console.log(`🌐 Fetching from API: page ${pageNumber}, size ${pageSize}`);
+      const news = await fetchNews(pageNumber, pageSize);
 
-        if (news) {
-          console.log(`Articles from API received: ${news.length} articles`);
+      if (news) {
+        console.log(`Articles from API received: ${news.length} articles`);
+
+        // need to check if we are getting more articles
+        if (news.length === 0) {
+          console.log(`No new articles found`);
+          setHasNoMore(true);
+        } else {
+          // if the user has refreshed it or data is stale
+          if (hasNoMore) {
+            setHasNoMore(false);
+          }
           await storeData(pageNumber, pageSize, news);
 
-          if (forceRefresh || pageNumber === 1) {
+          if (isRefreshing || pageNumber === 1) {
             console.log(`First time setting articles: ${news.length} articles`);
             setArticles(news);
           } else {
@@ -61,40 +69,52 @@ export const useHomeUI = (props: HomeScreenProps) => {
             );
             setArticles(prev => [...prev, ...news]);
           }
-        } else {
-          throw new Error(apiError || 'Failed to fetch news');
         }
-      } catch (e) {
-        console.error('❌ Error fetching news', e);
-        setError(apiError || 'Failed to fetch news');
-      } finally {
-        setLoading(false);
-        setIsRefreshing(false);
+      } else {
+        throw new Error(apiError || 'Failed to fetch news');
       }
-    },
-    [pageNumber, apiError, pageSize, clearData, fetchNews, getData, storeData],
-  );
+    } catch (e) {
+      console.error('❌ Error fetching news', e);
+      setError(apiError || 'Failed to fetch news');
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [
+    pageNumber,
+    apiError,
+    pageSize,
+    clearData,
+    fetchNews,
+    getData,
+    storeData,
+    hasNoMore,
+    isRefreshing,
+  ]);
 
   const loadMore = useCallback(() => {
-    if (!loading) {
+    if (!loading && !hasNoMore) {
+      console.log('Loading more articles...');
       setPageNumber(prev => prev + 1);
     }
-  }, [loading]);
+  }, [loading, hasNoMore]);
 
   const onRefresh = useCallback(() => {
+    console.log('Refreshing articles...');
     setIsRefreshing(true);
     setPageNumber(1);
   }, []);
 
   useEffect(() => {
-    fetchArticles(pageNumber === 1);
-  }, [pageNumber, fetchArticles]);
+    fetchArticles();
+  }, [fetchArticles, pageNumber]);
 
   return {
     articles,
     loading,
     error,
     loadMore,
+    hasNoMore,
     onRefresh,
     isRefreshing,
   };

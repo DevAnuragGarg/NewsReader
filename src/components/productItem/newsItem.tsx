@@ -13,7 +13,9 @@ export const NewsItem: React.FC<NewsItemProps> = ({ news }) => {
             Published on: {formatDate(news.publishedAt)}
           </Text>
         )}
-        <Text style={styles.author}>Author: {news.author}</Text>
+        {news.author && (
+          <Text style={styles.author}>Author: {news.author}</Text>
+        )}
       </View>
       <View style={styles.infoContainer}>
         <Text style={styles.title} ellipsizeMode="tail">
